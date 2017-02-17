@@ -150,11 +150,12 @@ class MySimulatorMaster(SimulatorMaster, Callback):
         self.queue = queue.Queue(maxsize=BATCH_SIZE * 8 * 2)
 
     def _setup_graph(self):
-        self.sess = self.trainer.sess
         self.async_predictor = MultiThreadAsyncPredictor(
             self.trainer.get_predict_funcs(['state'], ['logitsT', 'pred_value'],
                                            PREDICTOR_THREAD), batch_size=15)
-        self.async_predictor.run()
+
+    def _before_train(self):
+        self.async_predictor.start()
 
     def _on_state(self, state, ident):
         def cb(outputs):

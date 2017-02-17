@@ -77,12 +77,11 @@ class EnqueueThread(threading.Thread):
         super(EnqueueThread, self).__init__()
         self.name = 'EnqueueThread'
         self.daemon = True
+        self.trainer = trainer
 
         self.dataflow = ds
         self.queue = queue
 
-        self.sess = trainer.sess
-        self.coord = trainer.coord
         self.placehdrs = input_placehdrs
 
         self.op = self.queue.enqueue(self.placehdrs)
@@ -92,27 +91,23 @@ class EnqueueThread(threading.Thread):
             self.size_op, tf.float32, name='input_queue_size'))
 
     def run(self):
-        try:
-            self.dataflow.reset_state()
-            with self.sess.as_default():
+        with self.trainer.sess.as_default():
+            try:
+                self.dataflow.reset_state()
                 while True:
                     for dp in self.dataflow.get_data():
-                        if self.coord.should_stop():
+                        if self.trainer.monitored_sess.should_stop():
                             return
                         feed = dict(zip(self.placehdrs, dp))
                         # print 'qsize:', self.sess.run([self.op, self.size_op], feed_dict=feed)[1]
                         self.op.run(feed_dict=feed)
-        except tf.errors.CancelledError:
-            pass
-        except Exception:
-            logger.exception("Exception in EnqueueThread:")
-        finally:
-            self.coord.request_stop()
-            try:
-                self.sess.run(self.close_op)
-            except RuntimeError:    # session already closed
+            except tf.errors.CancelledError:
                 pass
-            logger.info("Enqueue Thread Exited.")
+            except Exception:
+                logger.exception("Exception in EnqueueThread:")
+            finally:
+                self.trainer.monitored_sess.close()
+                logger.info("Enqueue Thread Exited.")
 
 
 class QueueInput(FeedfreeInput):

@@ -21,7 +21,8 @@ else:
     import subprocess
 
 
-__all__ = ['StoppableThread', 'LoopThread', 'ensure_proc_terminate',
+__all__ = ['StoppableThread', 'LoopThread', 'ShareSessionThread',
+           'ensure_proc_terminate',
            'OrderedResultGatherProc', 'OrderedContainer', 'DIE',
            'mask_sigint', 'start_proc_mask_signal']
 
@@ -95,6 +96,36 @@ class LoopThread(StoppableThread):
         """ Resume the loop """
         assert self._pausable
         self._lock.release()
+
+
+class ShareSessionThread(threading.Thread):
+    """ A wrapper around thread so that the thread
+        uses the default session at "start()" time.
+    """
+    def __init__(self, th):
+        """
+        Args:
+            th (threading.Thread):
+        """
+        assert isinstance(th, threading.Thread), th
+        self._th = th
+        self.name = th.name
+        self.daemon = th.daemon
+        super(ShareSessionThread, self).__init__()
+
+    @contextmanager
+    def default_sess(self):
+        with self._sess.as_default():
+            yield
+
+    def start(self):
+        import tensorflow as tf
+        self._sess = tf.get_default_session()
+        super(ShareSessionThread, self).start()
+
+    def run(self):
+        with self._sess.as_default():
+            self._th.run()
 
 
 class DIE(object):
